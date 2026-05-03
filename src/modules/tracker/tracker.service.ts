@@ -5,19 +5,30 @@ import { TrendResult } from './trend-result.interface';
 
 const KEYWORDS = [
   // AI & Automation
-  'AI automation 2026', 'AI agent tutorial', 'AI tools 2026',
-  'automate with AI', 'n8n automation', 'make money with AI',
-  'AI workflow tutorial', 'ChatGPT automation',
+  'AI automation 2026',
+  'AI agent tutorial',
+  'AI tools 2026',
+  'automate with AI',
+  'n8n automation',
+  'make money with AI',
+  'AI workflow tutorial',
+  'ChatGPT automation',
   // Tech & Engineering
-  'system design 2026', 'backend development tips',
-  'software architecture explained', 'developer side hustle',
+  'system design 2026',
+  'backend development tips',
+  'software architecture explained',
+  'developer side hustle',
   // Business & Income
-  'passive income 2026', 'faceless YouTube automation',
-  'online business AI', 'digital product income',
+  'passive income 2026',
+  'faceless YouTube automation',
+  'online business AI',
+  'digital product income',
   'AI side hustle 2026',
   // Real Estate Tech
-  'real estate technology', 'proptech 2026',
-  'real estate investing AI', 'property market analysis',
+  'real estate technology',
+  'proptech 2026',
+  'real estate investing AI',
+  'property market analysis',
 ];
 
 const YOUTUBE_BASE = 'https://www.googleapis.com/youtube/v3';
@@ -35,7 +46,9 @@ export class TrackerService {
     const publishedAfter = this.getPublishedAfter();
 
     const searchResults = await Promise.all(
-      KEYWORDS.map(keyword => this.searchKeyword(keyword, publishedAfter, apiKey)),
+      KEYWORDS.map((keyword) =>
+        this.searchKeyword(keyword, publishedAfter, apiKey),
+      ),
     );
 
     const flat = searchResults.flat();
@@ -51,7 +64,12 @@ export class TrackerService {
     apiKey: string,
   ): Promise<Omit<TrendResult, 'viewCount'>[]> {
     try {
-      const response = await axios.get(`${YOUTUBE_BASE}/search`, {
+      const response = await axios.get<{
+        items: {
+          id: { videoId: string };
+          snippet: { title: string; channelTitle: string; publishedAt: string };
+        }[];
+      }>(`${YOUTUBE_BASE}/search`, {
         params: {
           q: keyword,
           part: 'snippet',
@@ -63,22 +81,25 @@ export class TrackerService {
         },
       });
 
-      return response.data.items.map((item: any) => ({
-        title: item.snippet.title,
-        videoId: item.id.videoId,
-        channelTitle: item.snippet.channelTitle,
-        publishedAt: item.snippet.publishedAt,
-        keyword,
-      }));
+      return response.data.items.map(
+        (item): Omit<TrendResult, 'viewCount'> => ({
+          title: item.snippet.title,
+          videoId: item.id.videoId,
+          channelTitle: item.snippet.channelTitle,
+          publishedAt: item.snippet.publishedAt,
+          keyword,
+        }),
+      );
     } catch (error) {
-      if (error.response?.status === 403) {
+      const err = error as { response?: { status: number }; message: string };
+      if (err.response?.status === 403) {
         this.logger.error(
           `[${new Date().toISOString()}] YouTube API quota exceeded for keyword "${keyword}". Skipping.`,
         );
         return [];
       }
       this.logger.warn(
-        `[${new Date().toISOString()}] Search failed for "${keyword}": ${error.message}`,
+        `[${new Date().toISOString()}] Search failed for "${keyword}": ${err.message}`,
       );
       return [];
     }
@@ -92,9 +113,11 @@ export class TrackerService {
     const results: TrendResult[] = [];
 
     for (const chunk of chunks) {
-      const ids = chunk.map(i => i.videoId).join(',');
+      const ids = chunk.map((i) => i.videoId).join(',');
       try {
-        const response = await axios.get(`${YOUTUBE_BASE}/videos`, {
+        const response = await axios.get<{
+          items: { id: string; statistics: { viewCount?: string } }[];
+        }>(`${YOUTUBE_BASE}/videos`, {
           params: { id: ids, part: 'statistics', key: apiKey },
         });
 
@@ -107,8 +130,9 @@ export class TrackerService {
           results.push({ ...item, viewCount: statsMap.get(item.videoId) ?? 0 });
         }
       } catch (error) {
+        const err = error as { message: string };
         this.logger.warn(
-          `[${new Date().toISOString()}] Statistics fetch failed for batch: ${error.message}`,
+          `[${new Date().toISOString()}] Statistics fetch failed for batch: ${err.message}`,
         );
       }
     }
@@ -118,14 +142,14 @@ export class TrackerService {
 
   private filterAndRank(items: TrendResult[]): TrendResult[] {
     const seen = new Set<string>();
-    const deduped = items.filter(item => {
+    const deduped = items.filter((item) => {
       if (seen.has(item.videoId)) return false;
       seen.add(item.videoId);
       return true;
     });
 
     return deduped
-      .filter(item => item.viewCount >= MIN_VIEWS)
+      .filter((item) => item.viewCount >= MIN_VIEWS)
       .sort((a, b) => b.viewCount - a.viewCount)
       .slice(0, TOP_N);
   }
@@ -138,7 +162,8 @@ export class TrackerService {
 
   private chunk<T>(arr: T[], size: number): T[][] {
     const chunks: T[][] = [];
-    for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+    for (let i = 0; i < arr.length; i += size)
+      chunks.push(arr.slice(i, i + size));
     return chunks;
   }
 }
