@@ -1,0 +1,15 @@
+services:
+  - type: worker
+    name: trendpulse
+    env: node
+    buildCommand: pnpm install && pnpm build
+    startCommand: pnpm start
+    envVars:
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: NODE_ENV
+        value: production
