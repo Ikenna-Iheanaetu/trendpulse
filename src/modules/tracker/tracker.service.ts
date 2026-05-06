@@ -2,6 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { TrendResult } from './trend-result.interface';
+import { EnrichedTrendResult } from '../../interfaces/enriched-trend-result.interface';
+import { TranscriptService } from '../transcript/transcript.service';
+import { ScriptService } from '../script/script.service';
 
 const KEYWORDS = [
   // AI & Automation
@@ -39,30 +42,66 @@ const TOP_N = 3;
 export class TrackerService {
   private readonly logger = new Logger(TrackerService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly transcriptService: TranscriptService,
+    private readonly scriptService: ScriptService,
+  ) {}
 
-  async scanAllKeywords(): Promise<TrendResult[]> {
+  async scanAllKeywords(): Promise<EnrichedTrendResult[]> {
     const apiKey = this.config.getOrThrow<string>('YOUTUBE_API_KEY');
     const publishedAfter = this.getPublishedAfter();
 
-    const searchResults = await Promise.all(
-      KEYWORDS.map((keyword) =>
-        this.searchKeyword(keyword, publishedAfter, apiKey),
-      ),
-    );
+    const allResults: Omit<TrendResult, 'viewCount'>[] = [];
+    for (const keyword of KEYWORDS) {
+      const results = await this.searchKeyword(keyword, publishedAfter, apiKey);
+      if (results === null) break; // quota exceeded — stop early
+      allResults.push(...results);
+    }
 
-    const flat = searchResults.flat();
-    if (flat.length === 0) return [];
+    if (allResults.length === 0) return [];
 
-    const withStats = await this.fetchStatistics(flat, apiKey);
-    return this.filterAndRank(withStats);
+    const withStats = await this.fetchStatistics(allResults, apiKey);
+    const top = this.filterAndRank(withStats);
+    return this.enrichResults(top);
+  }
+
+  private async enrichResults(results: TrendResult[]): Promise<EnrichedTrendResult[]> {
+    const enriched: EnrichedTrendResult[] = [];
+
+    for (const result of results) {
+      let transcriptData: EnrichedTrendResult['transcriptData'];
+      let analysis: EnrichedTrendResult['analysis'];
+
+      try {
+        transcriptData = await this.transcriptService.getTranscript(result.videoId);
+      } catch (error) {
+        const err = error as { message: string };
+        this.logger.warn(
+          `[${new Date().toISOString()}] Transcript fetch failed for ${result.videoId}: ${err.message}`,
+        );
+      }
+
+      if (transcriptData) {
+        try {
+          analysis = await this.scriptService.analyzeVideo(result, transcriptData);
+        } catch (error) {
+          const err = error as { message: string };
+          this.logger.warn(`[${new Date().toISOString()}] GPT analysis failed for ${result.videoId}: ${err.message}`);
+        }
+      }
+
+      enriched.push({ ...result, transcriptData, analysis });
+    }
+
+    return enriched;
   }
 
   private async searchKeyword(
     keyword: string,
     publishedAfter: string,
     apiKey: string,
-  ): Promise<Omit<TrendResult, 'viewCount'>[]> {
+  ): Promise<Omit<TrendResult, 'viewCount'>[] | null> {
     try {
       const response = await axios.get<{
         items: {
@@ -93,33 +132,25 @@ export class TrackerService {
     } catch (error) {
       const err = error as { response?: { status: number }; message: string };
       if (err.response?.status === 403) {
-        this.logger.error(
-          `[${new Date().toISOString()}] YouTube API quota exceeded for keyword "${keyword}". Skipping.`,
-        );
-        return [];
+        this.logger.error(`[${new Date().toISOString()}] YouTube API quota exceeded. Stopping scan.`);
+        return null;
       }
-      this.logger.warn(
-        `[${new Date().toISOString()}] Search failed for "${keyword}": ${err.message}`,
-      );
+      this.logger.warn(`[${new Date().toISOString()}] Search failed for "${keyword}": ${err.message}`);
       return [];
     }
   }
 
-  private async fetchStatistics(
-    items: Omit<TrendResult, 'viewCount'>[],
-    apiKey: string,
-  ): Promise<TrendResult[]> {
+  private async fetchStatistics(items: Omit<TrendResult, 'viewCount'>[], apiKey: string): Promise<TrendResult[]> {
     const chunks = this.chunk(items, 50);
     const results: TrendResult[] = [];
 
     for (const chunk of chunks) {
       const ids = chunk.map((i) => i.videoId).join(',');
       try {
-        const response = await axios.get<{
-          items: { id: string; statistics: { viewCount?: string } }[];
-        }>(`${YOUTUBE_BASE}/videos`, {
-          params: { id: ids, part: 'statistics', key: apiKey },
-        });
+        const response = await axios.get<{ items: { id: string; statistics: { viewCount?: string } }[] }>(
+          `${YOUTUBE_BASE}/videos`,
+          { params: { id: ids, part: 'statistics', key: apiKey } },
+        );
 
         const statsMap = new Map<string, number>();
         for (const item of response.data.items) {
@@ -130,10 +161,12 @@ export class TrackerService {
           results.push({ ...item, viewCount: statsMap.get(item.videoId) ?? 0 });
         }
       } catch (error) {
-        const err = error as { message: string };
-        this.logger.warn(
-          `[${new Date().toISOString()}] Statistics fetch failed for batch: ${err.message}`,
-        );
+        const err = error as { response?: { status: number }; message: string };
+        if (err.response?.status === 403) {
+          this.logger.error(`[${new Date().toISOString()}] YouTube API quota exceeded during statistics fetch. Aborting batch.`);
+          break;
+        }
+        this.logger.warn(`[${new Date().toISOString()}] Statistics fetch failed for batch: ${err.message}`);
       }
     }
 
@@ -162,8 +195,7 @@ export class TrackerService {
 
   private chunk<T>(arr: T[], size: number): T[][] {
     const chunks: T[][] = [];
-    for (let i = 0; i < arr.length; i += size)
-      chunks.push(arr.slice(i, i + size));
+    for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
     return chunks;
   }
 }

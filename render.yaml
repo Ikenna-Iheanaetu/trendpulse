@@ -2,7 +2,7 @@ services:
   - type: worker
     name: trendpulse
     env: node
-    buildCommand: pnpm install && pnpm build
+    buildCommand: apt-get update -y && apt-get install -y ffmpeg && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp && pnpm install && pnpm build
     startCommand: pnpm start
     envVars:
       - key: YOUTUBE_API_KEY
@@ -10,6 +10,8 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: OPENAI_API_KEY
         sync: false
       - key: NODE_ENV
         value: production

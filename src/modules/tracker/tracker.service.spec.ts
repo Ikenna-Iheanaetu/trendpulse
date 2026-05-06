@@ -12,8 +12,22 @@ describe('TrackerService', () => {
   describe('filterAndRank', () => {
     it('removes videos with viewCount below 100,000', () => {
       const input = [
-        { title: 'A', videoId: '1', viewCount: 50000, channelTitle: 'C', publishedAt: new Date().toISOString(), keyword: 'k' },
-        { title: 'B', videoId: '2', viewCount: 200000, channelTitle: 'C', publishedAt: new Date().toISOString(), keyword: 'k' },
+        {
+          title: 'A',
+          videoId: '1',
+          viewCount: 50000,
+          channelTitle: 'C',
+          publishedAt: new Date().toISOString(),
+          keyword: 'k',
+        },
+        {
+          title: 'B',
+          videoId: '2',
+          viewCount: 200000,
+          channelTitle: 'C',
+          publishedAt: new Date().toISOString(),
+          keyword: 'k',
+        },
       ];
       const result = (service as any).filterAndRank(input);
       expect(result).toHaveLength(1);
@@ -22,8 +36,22 @@ describe('TrackerService', () => {
 
     it('deduplicates by videoId keeping the first keyword encountered', () => {
       const input = [
-        { title: 'A', videoId: '1', viewCount: 500000, channelTitle: 'C', publishedAt: new Date().toISOString(), keyword: 'kw1' },
-        { title: 'A', videoId: '1', viewCount: 500000, channelTitle: 'C', publishedAt: new Date().toISOString(), keyword: 'kw2' },
+        {
+          title: 'A',
+          videoId: '1',
+          viewCount: 500000,
+          channelTitle: 'C',
+          publishedAt: new Date().toISOString(),
+          keyword: 'kw1',
+        },
+        {
+          title: 'A',
+          videoId: '1',
+          viewCount: 500000,
+          channelTitle: 'C',
+          publishedAt: new Date().toISOString(),
+          keyword: 'kw2',
+        },
       ];
       const result = (service as any).filterAndRank(input);
       expect(result).toHaveLength(1);
@@ -32,10 +60,38 @@ describe('TrackerService', () => {
 
     it('sorts by viewCount descending and returns top 3', () => {
       const input = [
-        { title: 'C', videoId: '3', viewCount: 100000, channelTitle: 'X', publishedAt: new Date().toISOString(), keyword: 'k' },
-        { title: 'A', videoId: '1', viewCount: 900000, channelTitle: 'X', publishedAt: new Date().toISOString(), keyword: 'k' },
-        { title: 'D', videoId: '4', viewCount: 200000, channelTitle: 'X', publishedAt: new Date().toISOString(), keyword: 'k' },
-        { title: 'B', videoId: '2', viewCount: 500000, channelTitle: 'X', publishedAt: new Date().toISOString(), keyword: 'k' },
+        {
+          title: 'C',
+          videoId: '3',
+          viewCount: 100000,
+          channelTitle: 'X',
+          publishedAt: new Date().toISOString(),
+          keyword: 'k',
+        },
+        {
+          title: 'A',
+          videoId: '1',
+          viewCount: 900000,
+          channelTitle: 'X',
+          publishedAt: new Date().toISOString(),
+          keyword: 'k',
+        },
+        {
+          title: 'D',
+          videoId: '4',
+          viewCount: 200000,
+          channelTitle: 'X',
+          publishedAt: new Date().toISOString(),
+          keyword: 'k',
+        },
+        {
+          title: 'B',
+          videoId: '2',
+          viewCount: 500000,
+          channelTitle: 'X',
+          publishedAt: new Date().toISOString(),
+          keyword: 'k',
+        },
       ];
       const result = (service as any).filterAndRank(input);
       expect(result).toHaveLength(3);
@@ -46,7 +102,14 @@ describe('TrackerService', () => {
 
     it('returns fewer than 3 if not enough results pass the filter', () => {
       const input = [
-        { title: 'A', videoId: '1', viewCount: 500000, channelTitle: 'X', publishedAt: new Date().toISOString(), keyword: 'k' },
+        {
+          title: 'A',
+          videoId: '1',
+          viewCount: 500000,
+          channelTitle: 'X',
+          publishedAt: new Date().toISOString(),
+          keyword: 'k',
+        },
       ];
       expect((service as any).filterAndRank(input)).toHaveLength(1);
     });
